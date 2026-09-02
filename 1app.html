@@ -1,0 +1,500 @@
+<!DOCTYPE html>  
+<html lang="zh-TW">  
+<head>  
+  <meta charset="UTF-8">  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">  
+  <title>雙空間獨立記帳</title>  
+  <script src="https://cdn.tailwindcss.com"></script>  
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>  
+</head>  
+<body class="bg-gray-100 text-gray-800 font-sans">  
+  <!-- 基礎結構與核心邏輯延伸自[span_0](start_span)[span_0](end_span) -->  
+  <div id="app" class="max-w-md mx-auto min-h-screen bg-white shadow-md flex flex-col">  
+      
+    <!-- 頂部視角切換 Tab[span_1](start_span)[span_1](end_span) -->  
+    <header class="bg-slate-800 text-white p-4 sticky top-0 z-10">  
+      <h1 class="text-xl font-bold text-center mb-3">雙空間獨立記帳</h1>  
+      <div class="flex bg-slate-700 rounded-lg p-1">  
+        <button   
+          @click="activeTab = 'expense'"   
+          :class="['flex-1 py-2 text-center text-sm font-semibold rounded-md transition', activeTab === 'expense' ? 'bg-blue-600 text-white shadow' : 'text-gray-300 hover:text-white']">  
+          🛍️ 消費空間  
+        </button>  
+        <button   
+          @click="activeTab = 'credit'"   
+          :class="['flex-1 py-2 text-center text-sm font-semibold rounded-md transition', activeTab === 'credit' ? 'bg-purple-600 text-white shadow' : 'text-gray-300 hover:text-white']">  
+          💳 信用卡空間  
+        </button>  
+      </div>  
+    </header>  
+  
+    <!-- 主要內容區[span_2](start_span)[span_2](end_span) -->  
+    <main class="flex-1 p-4 space-y-4">  
+        
+      <!-- 空間 1: 消費空間 -->  
+      <section v-if="activeTab === 'expense'" class="space-y-4">  
+          
+        <!-- 月份選擇切換器[span_3](start_span)[span_3](end_span) -->  
+        <div class="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-200">  
+          <button @click="changeMonth(-1)" class="p-1 text-gray-600 hover:text-black font-bold">◀ 上個月</button>  
+          <div class="text-center font-bold text-lg text-slate-800">  
+            {{ currentYearMonth }}  
+          </div>  
+          <button @click="changeMonth(1)" class="p-1 text-gray-600 hover:text-black font-bold">下個月 ▶</button>  
+        </div>  
+  
+        <!-- 當月總支出卡片[span_4](start_span)[span_4](end_span) -->  
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 flex justify-between items-center">  
+          <div>  
+            <p class="text-xs text-blue-600 font-bold uppercase tracking-wider">{{ currentYearMonth }} 總消費</p>  
+            <p class="text-3xl font-extrabold text-blue-900 mt-1">${{ monthlyExpense.toLocaleString() }}</p>  
+          </div>  
+          <span class="text-3xl">📊</span>  
+        </div>  
+  
+        <!-- 明細列表 -->  
+        <div>  
+          <h2 class="text-sm font-bold text-gray-500 mb-2">本月消費紀錄</h2>  
+          <div v-if="filteredTransactions.length === 0" class="text-center py-8 text-gray-400">當月尚無消費紀錄</div>  
+          <ul class="divide-y divide-gray-100 bg-white border border-gray-100 rounded-lg overflow-hidden">  
+            <li v-for="tx in filteredTransactions" :key="tx.id" class="p-3 flex justify-between items-center hover:bg-gray-50">  
+              <div class="flex-1">  
+                <!-- 支援顯示分期名稱[span_5](start_span)[span_5](end_span) -->  
+                <p class="font-bold text-gray-800">{{ tx.itemName || tx.category }}</p>  
+                <p class="text-xs text-gray-400">{{ tx.date }} · 支付：{{ getAccountName(tx.accountId) }}</p>  
+              </div>  
+              <div class="flex items-center gap-3">  
+                <span class="font-bold text-red-500">-${{ tx.amount.toLocaleString() }}</span>  
+                <!-- 刪除消費紀錄按鈕[span_6](start_span)[span_6](end_span) -->  
+                <button @click="deleteTransaction(tx)" class="text-xs text-gray-400 hover:text-red-500 p-1">🗑️</button>  
+              </div>  
+            </li>  
+          </ul>  
+        </div>  
+      </section>  
+  
+      <!-- 空間 2: 信用卡空間[span_7](start_span)[span_7](end_span) -->  
+      <section v-if="activeTab === 'credit'" class="space-y-4">  
+        <div class="flex justify-between items-center">  
+          <h2 class="text-sm font-bold text-gray-500">信用卡與額度管理</h2>  
+          <button @click="openCardModal()" class="text-xs bg-purple-100 text-purple-700 hover:bg-purple-200 font-bold px-3 py-1.5 rounded-lg transition">  
+            ➕ 新增信用卡  
+          </button>  
+        </div>  
+  
+        <div v-if="creditCards.length === 0" class="text-center py-12 text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">  
+          尚未新增信用卡，點擊上方按鈕建立第一張卡片！  
+        </div>  
+  
+        <div v-for="card in creditCards" :key="card.id" class="bg-gradient-to-br from-slate-800 to-slate-900 text-white rounded-xl p-5 shadow-lg border border-slate-700 space-y-4 relative">  
+          <div class="flex justify-between items-center">  
+            <h3 class="font-bold text-lg text-purple-300">{{ card.name }}</h3>  
+            <div class="flex items-center gap-2">  
+              <button @click="openCardModal(card)" class="text-xs text-gray-400 hover:text-white bg-slate-700 px-2 py-1 rounded">✏️ 編輯</button>  
+              <button @click="deleteCard(card.id)" class="text-xs text-red-400 hover:text-red-200 bg-slate-700 px-2 py-1 rounded">🗑️</button>  
+            </div>  
+          </div>  
+  
+          <div class="grid grid-cols-2 gap-4 pt-1">  
+            <div>  
+              <p class="text-xs text-gray-400">當期未結帳金額</p>  
+              <p class="text-xl font-bold text-red-400 mt-0.5">${{ card.currentDebt.toLocaleString() }}</p>  
+            </div>  
+            <div>  
+              <p class="text-xs text-gray-400">可用額度</p>  
+              <p class="text-xl font-bold text-emerald-400 mt-0.5">${{ (card.creditLimit - card.currentDebt).toLocaleString() }}</p>  
+            </div>  
+          </div>  
+  
+          <div class="space-y-1">  
+            <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">  
+              <div class="bg-red-500 h-full transition-all duration-300" :style="{ width: Math.min((card.currentDebt / (card.creditLimit || 1)) * 100, 100) + '%' }"></div>  
+            </div>  
+            <p class="text-right text-[10px] text-gray-400">總額度: ${{ card.creditLimit.toLocaleString() }}</p>  
+          </div>  
+  
+          <button   
+            @click="payBill(card)"   
+            :disabled="card.currentDebt <= 0"  
+            class="w-full py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 text-white text-sm font-semibold rounded-lg transition shadow">  
+            {{ card.currentDebt > 0 ? '繳納卡費 (恢復額度)' : '帳單已結清' }}  
+          </button>  
+        </div>  
+      </section>  
+  
+    </main>  
+  
+    <!-- 底部固定記帳與分期按鈕[span_8](start_span)[span_8](end_span) -->  
+    <div class="p-4 bg-white border-t border-gray-100 sticky bottom-0 flex gap-2">  
+      <button @click="showExpenseModal = true" class="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2">  
+        <span>➕</span> 新增消費  
+      </button>  
+      <button @click="showInstallmentModal = true" class="flex-1 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2">  
+        <span>⏱️</span> 新增分期  
+      </button>  
+    </div>  
+  
+    <!-- 記帳 Modal[span_9](start_span)[span_9](end_span) -->  
+    <div v-if="showExpenseModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">  
+      <div class="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl p-6 space-y-4">  
+        <h2 class="text-lg font-bold text-gray-800">記一筆消費</h2>  
+          
+        <div>  
+          <label class="block text-xs font-bold text-gray-500 mb-1">金額</label>  
+          <input v-model.number="expenseForm.amount" type="number" placeholder="0" class="w-full text-2xl font-bold p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">  
+        </div>  
+  
+        <div>  
+          <label class="block text-xs font-bold text-gray-500 mb-1">消費日期</label>  
+          <input v-model="expenseForm.date" type="date" class="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">  
+        </div>  
+  
+        <div class="grid grid-cols-2 gap-3">  
+          <div>  
+            <label class="block text-xs font-bold text-gray-500 mb-1">分類</label>  
+            <select v-model="expenseForm.category" class="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">  
+              <option>餐飲</option>  
+              <option>服飾</option>  
+              <option>娛樂</option>  
+              <option>交通</option>  
+              <option>日常用品</option>  
+              <option>其他</option>  
+            </select>  
+          </div>  
+          <div>  
+            <label class="block text-xs font-bold text-gray-500 mb-1">支付方式</label>  
+            <select v-model="expenseForm.accountId" class="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500">  
+              <option v-for="acc in accounts" :key="acc.id" :value="acc.id">{{ acc.name }}</option>  
+            </select>  
+          </div>  
+        </div>  
+  
+        <div class="flex gap-3 pt-2">  
+          <button @click="showExpenseModal = false" class="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl">取消</button>  
+          <button @click="addTransaction" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl shadow">儲存</button>  
+        </div>  
+      </div>  
+    </div>  
+  
+    <!-- 新增分期 Modal (全新自動生成區塊) -->  
+    <div v-if="showInstallmentModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">  
+      <div class="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl p-6 space-y-4">  
+        <h2 class="text-lg font-bold text-gray-800">新增分期付款</h2>  
+          
+        <div>  
+          <label class="block text-xs font-bold text-gray-500 mb-1">分期項目名稱</label>  
+          <input v-model="installmentForm.name" type="text" placeholder="例如：新筆電、iPhone" class="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500">  
+        </div>  
+  
+        <div class="grid grid-cols-2 gap-3">  
+          <div>  
+            <label class="block text-xs font-bold text-gray-500 mb-1">總金額 ($)</label>  
+            <input v-model.number="installmentForm.totalAmount" type="number" placeholder="30000" class="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500">  
+          </div>  
+          <div>  
+            <label class="block text-xs font-bold text-gray-500 mb-1">總期數 (月)</label>  
+            <input v-model.number="installmentForm.months" type="number" placeholder="12" class="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500">  
+          </div>  
+        </div>  
+  
+        <div class="grid grid-cols-2 gap-3">  
+          <div>  
+            <label class="block text-xs font-bold text-gray-500 mb-1">首期扣款日</label>  
+            <input v-model="installmentForm.startDate" type="date" class="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500">  
+          </div>  
+          <div>  
+            <label class="block text-xs font-bold text-gray-500 mb-1">支付帳戶 / 信用卡</label>  
+            <select v-model="installmentForm.accountId" class="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500">  
+              <option v-for="acc in accounts" :key="acc.id" :value="acc.id">{{ acc.name }}</option>  
+            </select>  
+          </div>  
+        </div>  
+  
+        <div class="flex gap-3 pt-2">  
+          <button @click="showInstallmentModal = false" class="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl">取消</button>  
+          <button @click="addInstallment" class="flex-1 py-3 bg-rose-600 text-white font-bold rounded-xl shadow">確認自動生成</button>  
+        </div>  
+      </div>  
+    </div>  
+  
+    <!-- 信用卡 Modal[span_10](start_span)[span_10](end_span) -->  
+    <div v-if="showCardModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">  
+      <div class="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl p-6 space-y-4">  
+        <h2 class="text-lg font-bold text-gray-800">{{ editingCardId ? '編輯信用卡' : '新增信用卡' }}</h2>  
+          
+        <div>  
+          <label class="block text-xs font-bold text-gray-500 mb-1">卡片名稱</label>  
+          <input v-model="cardForm.name" type="text" placeholder="例如：台新 FlyGo 卡" class="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500">  
+        </div>  
+  
+        <div>  
+          <label class="block text-xs font-bold text-gray-500 mb-1">總額度 ($)</label>  
+          <input v-model.number="cardForm.creditLimit" type="number" placeholder="50000" class="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500">  
+        </div>  
+  
+        <div>  
+          <label class="block text-xs font-bold text-gray-500 mb-1">目前已刷金額 ($)</label>  
+          <input v-model.number="cardForm.currentDebt" type="number" placeholder="0" class="w-full p-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500">  
+        </div>  
+  
+        <div class="flex gap-3 pt-2">  
+          <button @click="showCardModal = false" class="flex-1 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl">取消</button>  
+          <button @click="saveCard" class="flex-1 py-3 bg-purple-600 text-white font-bold rounded-xl shadow">儲存卡片</button>  
+        </div>  
+      </div>  
+    </div>  
+  
+  </div>  
+  
+  <script>  
+    const { createApp, ref, computed, onMounted, watch } = Vue;  
+  
+    createApp({  
+      setup() {  
+        const activeTab = ref('expense');  
+        const showExpenseModal = ref(false);  
+        const showInstallmentModal = ref(false); // 分期 Modal 狀態  
+        const showCardModal = ref(false);  
+        const editingCardId = ref(null);  
+  
+        // 日期切換控制（預設為目前年月）[span_11](start_span)[span_11](end_span)  
+        const selectedDate = ref(new Date());  
+  
+        const accounts = ref([  
+          { id: '1', name: '現金', type: 'cash' },  
+          { id: '2', name: '國泰 CUBE 卡', type: 'creditCard', creditLimit: 50000, currentDebt: 0 },  
+        ]);  
+  
+        const transactions = ref([]);  
+  
+        // 預設今日日期 YYYY-MM-DD[span_12](start_span)[span_12](end_span)  
+        const getTodayString = () => {  
+          const today = new Date();  
+          return today.toISOString().split('T')[0];  
+        };  
+  
+        const expenseForm = ref({  
+          amount: null,  
+          category: '餐飲',  
+          accountId: '1',  
+          date: getTodayString()  
+        });  
+  
+        // 分期表單預設狀態  
+        const installmentForm = ref({  
+          name: '',  
+          totalAmount: null,  
+          months: null,  
+          accountId: '1',  
+          startDate: getTodayString()  
+        });  
+  
+        const cardForm = ref({  
+          name: '',  
+          creditLimit: 50000,  
+          currentDebt: 0  
+        });  
+  
+        onMounted(() => {  
+          const savedAcc = localStorage.getItem('accounts');  
+          const savedTx = localStorage.getItem('transactions');  
+          if (savedAcc) accounts.value = JSON.parse(savedAcc);  
+          if (savedTx) transactions.value = JSON.parse(savedTx);  
+          if (accounts.value.length > 0) {  
+            expenseForm.value.accountId = accounts.value[0].id;  
+            installmentForm.value.accountId = accounts.value[0].id;  
+          }  
+        });  
+  
+        watch([accounts, transactions], () => {  
+          localStorage.setItem('accounts', JSON.stringify(accounts.value));  
+          localStorage.setItem('transactions', JSON.stringify(transactions.value));  
+        }, { deep: true });  
+  
+        // 格式化當前選擇的年月 (如：2026年08月)[span_13](start_span)[span_13](end_span)  
+        const currentYearMonth = computed(() => {  
+          const year = selectedDate.value.getFullYear();  
+          const month = String(selectedDate.value.getMonth() + 1).padStart(2, '0');  
+          return `${year}年${month}月`;  
+        });  
+  
+        // 根據選擇的月份過濾消費紀錄[span_14](start_span)[span_14](end_span)  
+        const filteredTransactions = computed(() => {  
+          const targetPrefix = `${selectedDate.value.getFullYear()}-${String(selectedDate.value.getMonth() + 1).padStart(2, '0')}`;  
+          return transactions.value.filter(tx => tx.date.startsWith(targetPrefix));  
+        });  
+  
+        // 當月總金額[span_15](start_span)[span_15](end_span)  
+        const monthlyExpense = computed(() => {  
+          return filteredTransactions.value.reduce((sum, tx) => sum + tx.amount, 0);  
+        });  
+  
+        // 月份切換（+1 或 -1 個月）[span_16](start_span)[span_16](end_span)  
+        const changeMonth = (delta) => {  
+          const d = new Date(selectedDate.value);  
+          d.setMonth(d.getMonth() + delta);  
+          selectedDate.value = d;  
+        };  
+  
+        const creditCards = computed(() => {  
+          return accounts.value.filter(a => a.type === 'creditCard');  
+        });  
+  
+        // 新增一般交易[span_17](start_span)[span_17](end_span)  
+        const addTransaction = () => {  
+          if (!expenseForm.value.amount || expenseForm.value.amount <= 0) return;  
+  
+          transactions.value.unshift({  
+            id: Date.now(),  
+            amount: expenseForm.value.amount,  
+            category: expenseForm.value.category,  
+            accountId: expenseForm.value.accountId,  
+            date: expenseForm.value.date || getTodayString()  
+          });  
+  
+          const acc = accounts.value.find(a => a.id === expenseForm.value.accountId);  
+          if (acc && acc.type === 'creditCard') {  
+            acc.currentDebt += expenseForm.value.amount;  
+          }  
+  
+          expenseForm.value.amount = null;  
+          expenseForm.value.date = getTodayString();  
+          showExpenseModal.value = false;  
+        };  
+  
+        // 自動分期生成器（核心防呆與迴圈邏輯）  
+        const addInstallment = () => {  
+          const { name, totalAmount, months, accountId, startDate } = installmentForm.value;  
+          if (!name || !totalAmount || !months || months <= 0) return;  
+  
+          const baseAmount = Math.floor(totalAmount / months);  
+          const lastAmount = totalAmount - (baseAmount * (months - 1));  
+  
+          const startD = new Date(startDate);  
+          let startYear = startD.getFullYear();  
+          let startMonth = startD.getMonth() + 1;  
+          let day = String(startD.getDate()).padStart(2, '0');  
+  
+          for (let i = 0; i < months; i++) {  
+            let currentMonth = (startMonth + i - 1) % 12 + 1;  
+            let currentYear = startYear + Math.floor((startMonth + i - 1) / 12);  
+            let amountToPay = (i === months - 1) ? lastAmount : baseAmount;  
+            let dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${day}`;  
+  
+            transactions.value.push({  
+              id: Date.now() + i,  
+              amount: amountToPay,  
+              category: '分期付款',  
+              itemName: `${name} (${i + 1}/${months}期)`,  
+              accountId: accountId,  
+              date: dateStr,  
+              isInstallment: true  
+            });  
+          }  
+  
+          // 若使用信用卡分期，一口氣將總金額計入卡片未結帳金額中  
+          const acc = accounts.value.find(a => a.id === accountId);  
+          if (acc && acc.type === 'creditCard') {  
+            acc.currentDebt += totalAmount;  
+          }  
+  
+          showInstallmentModal.value = false;  
+          installmentForm.value = {  
+            name: '',  
+            totalAmount: null,  
+            months: null,  
+            accountId: accounts.value[0]?.id,  
+            startDate: getTodayString()  
+          };  
+        };  
+  
+        // 刪除交易（連動退還信用卡額度）[span_18](start_span)[span_18](end_span)  
+        const deleteTransaction = (tx) => {  
+          if (confirm('確定要刪除這筆消費嗎？')) {  
+            transactions.value = transactions.value.filter(t => t.id !== tx.id);  
+  
+            const acc = accounts.value.find(a => a.id === tx.accountId);  
+            if (acc && acc.type === 'creditCard') {  
+              acc.currentDebt = Math.max(0, acc.currentDebt - tx.amount);  
+            }  
+          }  
+        };  
+  
+        const openCardModal = (card = null) => {  
+          if (card) {  
+            editingCardId.value = card.id;  
+            cardForm.value = { name: card.name, creditLimit: card.creditLimit, currentDebt: card.currentDebt };  
+          } else {  
+            editingCardId.value = null;  
+            cardForm.value = { name: '', creditLimit: 50000, currentDebt: 0 };  
+          }  
+          showCardModal.value = true;  
+        };  
+  
+        const saveCard = () => {  
+          if (!cardForm.value.name) return;  
+  
+          if (editingCardId.value) {  
+            const card = accounts.value.find(a => a.id === editingCardId.value);  
+            if (card) {  
+              card.name = cardForm.value.name;  
+              card.creditLimit = cardForm.value.creditLimit || 0;  
+              card.currentDebt = cardForm.value.currentDebt || 0;  
+            }  
+          } else {  
+            accounts.value.push({  
+              id: Date.now().toString(),  
+              name: cardForm.value.name,  
+              type: 'creditCard',  
+              creditLimit: cardForm.value.creditLimit || 0,  
+              currentDebt: cardForm.value.currentDebt || 0  
+            });  
+          }  
+          showCardModal.value = false;  
+        };  
+  
+        const deleteCard = (id) => {  
+          if (confirm('確定要刪除這張卡片嗎？')) {  
+            accounts.value = accounts.value.filter(a => a.id !== id);  
+          }  
+        };  
+  
+        const payBill = (card) => {  
+          card.currentDebt = 0;  
+        };  
+  
+        const getAccountName = (id) => {  
+          const acc = accounts.value.find(a => a.id === id);  
+          return acc ? acc.name : '未知帳戶';  
+        };  
+  
+        return {  
+          activeTab,  
+          showExpenseModal,  
+          showInstallmentModal,  
+          showCardModal,  
+          editingCardId,  
+          accounts,  
+          transactions,  
+          expenseForm,  
+          installmentForm,  
+          cardForm,  
+          creditCards,  
+          currentYearMonth,  
+          filteredTransactions,  
+          monthlyExpense,  
+          changeMonth,  
+          addTransaction,  
+          addInstallment,  
+          deleteTransaction,  
+          openCardModal,  
+          saveCard,  
+          deleteCard,  
+          payBill,  
+          getAccountName  
+        };  
+      }  
+    }).mount('#app');  
+  </script>  
+</body>  
+</html>  
